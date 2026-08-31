@@ -1,1 +1,1 @@
-Informe inicicial
+Informe inicial
