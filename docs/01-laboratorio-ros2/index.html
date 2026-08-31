@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitácora del Laboratorio · Informe 01</title>
+<meta name="description" content="Un laboratorio de robótica que vive entero en Docker: un dron que releva una reserva simulada de lobos marinos, un dataset que se fabrica solo, dos modelos entrenados con él, y la comparación contra SAM 2.1 y SAM 3 de Meta.">
+<meta property="og:title" content="Bitácora del Laboratorio">
+<meta property="og:description" content="Un laboratorio de robótica que vive entero en Docker: un dron que releva una reserva simulada de lobos marinos, un dataset que se fabrica solo, dos modelos entrenados con él, y la comparación contra SAM 2.1 y SAM 3 de Meta.">
+<meta property="og:image" content="medios/cuatro-maneras-de-contar-la-misma-escena.jpg">
+<meta property="og:type" content="article">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,600;1,6..72,400&family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../estilo.css">
+</head>
+<body>
+
+<div class="hoja">
+
+<p class="volver"><a href="../">&#8592; Todos los informes</a></p>
+
+
+<header class="tapa">
+  <p class="marca">ROS 2 Jazzy · Gazebo Harmonic · PX4 · YOLO26 · SAM 2.1 · SAM 3 · Docker</p>
+  <h1>Bitácora del Laboratorio</h1>
+  <p class="bajada">Un laboratorio de robótica que vive entero en contenedores. Un dron que releva una reserva de lobos marinos, un dataset que se fabrica solo, y dos modelos entrenados con él: uno que cuenta y otro que decide qué vale la pena fotografiar. Al final, esos modelos de pocos megabytes se miden contra los fundacionales de Meta.</p>
+  <div class="cifras">
+    <div class="cifra"><b>3</b><span>simuladores</span></div>
+    <div class="cifra"><b>616</b><span>imágenes etiquetadas</span></div>
+    <div class="cifra"><b>2</b><span>modelos entrenados</span></div>
+    <div class="cifra"><b>93%</b><span>decisiones correctas</span></div>
+    <div class="cifra"><b>0</b><span>etiquetas a mano</span></div>
+    <div class="cifra"><b>5,5×</b><span>mejor que el fundacional</span></div>
+  </div>
+</header>
+
+<section>
+  <div class="etapa"><span class="num">Sustrato</span><h2>Todo en contenedores</h2></div>
+  <p>Nada se instala en la máquina salvo Docker. El stack completo —ROS&nbsp;2, el simulador, el autopiloto, el entorno de entrenamiento— vive en imágenes que se levantan por <em>perfiles</em>: se enciende sólo lo que hace falta.</p>
+  <p>Todo lo que sigue se generó y se ejecutó en una sola computadora de escritorio, con una placa de video de 6&nbsp;GB.</p>
+  <div class="fichas">
+    <div class="ficha"><h4>Gazebo Harmonic</h4><span class="ver">con ROS 2 Jazzy · LTS a 2029</span>
+      <p>Física, sensores y render sobre GPU. El mundo donde viven los robots.</p></div>
+    <div class="ficha"><h4>PX4 SITL</h4><span class="ver">v1.17.0 · uXRCE-DDS</span>
+      <p>El mismo autopiloto que corre en una Pixhawk, volando en simulación. Control offboard desde Python.</p></div>
+    <div class="ficha"><h4>gym-pybullet-drones</h4><span class="ver">Gymnasium · stable-baselines3</span>
+      <p>El cuadricóptero como problema de control aprendible. Python puro, corre en CPU.</p></div>
+  </div>
+  <figure class="placa">
+  <video controls playsinline preload="none" poster="medios/primer-vuelo-circuito-con-balizas-cartel.jpg">
+    <source src="medios/primer-vuelo-circuito-con-balizas.mp4" type="video/mp4">Tu navegador no reproduce este video.
+  </video>
+  <figcaption><span class="rotulo">Primer vuelo · circuito con balizas</span>Dos órbitas de radio 6&nbsp;m con el morro apuntando al centro. Las balizas no son decorado: sobre un plano gris vacío el movimiento no se lee, porque no hay referencias.</figcaption>
+</figure>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Misión</span><h2>Relevamiento de la reserva</h2></div>
+  <p>Una misión de juguete con primitivas, para ilustrar la forma de un relevamiento real: despegue del helipuerto, traslado a 26&nbsp;m, descenso, barrido en zigzag sobre la colonia tomando fotos, regreso y aterrizaje.</p>
+  <figure class="placa">
+  <video controls playsinline preload="none" poster="medios/vista-externa-camara-acompanante-cartel.jpg">
+    <source src="medios/vista-externa-camara-acompanante.mp4" type="video/mp4">Tu navegador no reproduce este video.
+  </video>
+  <figcaption><span class="rotulo">Vista externa · cámara acompañante</span>El encuadre cambia según la etapa. Mover la cámara del visor no cuesta nada — medido: 592&nbsp;MB y 56&nbsp;% de CPU, fija o siguiendo. Lo que sí cuesta son los sensores de cámara.</figcaption>
+</figure>
+  <figure class="placa">
+  <video controls playsinline preload="none" poster="medios/vista-a-bordo-cartel.jpg">
+    <source src="medios/vista-a-bordo.mp4" type="video/mp4">Tu navegador no reproduce este video.
+  </video>
+  <figcaption><span class="rotulo">Vista a bordo</span>363 cuadros de la cámara que mira hacia abajo, interpolados a 25&nbsp;fps. Se ve la sombra del propio dron sobre el agua. Esta es la materia prima de todo lo que sigue.</figcaption>
+</figure>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Datos</span><h2>Un dataset que se fabrica solo</h2></div>
+  <p>Acá está la ventaja que un dataset real no tiene: <strong>las etiquetas salen gratis y son exactas</strong>. Conocemos las coordenadas 3D de cada animal y los parámetros de la cámara, así que proyectar da la caja en píxeles. Sin etiquetar a mano, sin error humano, y sin ambigüedad cuando dos animales se superponen: sabemos dónde está cada uno aunque el otro lo tape.</p>
+
+  <h3>La proyección se calibró, no se dedujo</h3>
+  <p>En vez de derivar la convención de ejes de la documentación y confiar, se probaron las ocho combinaciones posibles y se eligió la que hace calzar las posiciones proyectadas con los animales que el detector clásico encontraba.</p>
+  <div class="consola">(y−, x−) ....... 12,3 px de error
+las otras siete .. 47 a 66 px</div>
+  <p>Separación decisiva. El residuo final —10,7&nbsp;px sobre un animal de 52&nbsp;px— no es error de proyección: compara el origen del modelo contra el centro del cuerpo visible, y estos animales tienen la cabeza corrida con orientación al azar.</p>
+
+  <figure class="placa">
+  <img loading="lazy" decoding="async" src="medios/cuatro-muestras-al-azar-con-sus-etiquetas.jpg" alt="Cuatro imágenes aéreas de rocas con lobos marinos, cada animal encerrado en una caja amarilla">
+  <figcaption><span class="rotulo">Cuatro muestras al azar, con sus etiquetas</span>Densidades y disposiciones distintas. Ninguna de esas cajas la dibujó una persona.</figcaption>
+</figure>
+
+  <p>El dron se queda quieto y la escena cambia debajo. Cada iteración: se reubican rocas y animales, se saca una foto y se calculan las etiquetas. <strong>Dos segundos por escena.</strong></p>
+  <div class="envoltorio"><table>
+    <thead><tr><th>Conjunto</th><th>Imágenes</th><th>Instancias</th><th>Mín</th><th>Máx</th><th>Media</th></tr></thead>
+    <tbody>
+      <tr><td>detección · entrenamiento</td><td class="n">234</td><td class="n">3439</td><td class="n">4</td><td class="n">26</td><td class="n">14,7</td></tr>
+      <tr><td>detección · validación</td><td class="n">69</td><td class="n">1010</td><td class="n">4</td><td class="n">26</td><td class="n">14,6</td></tr>
+      <tr><td>decisión · con y sin fauna</td><td class="n">313</td><td class="n">—</td><td class="n">0</td><td class="n">26</td><td class="n">—</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Modelos</span><h2>Contar y decidir</h2></div>
+  <p>Dos modelos, entrenados con esos datos, resolviendo mitades distintas del problema.</p>
+
+  <h3>Contar · YOLO26</h3>
+  <p>La línea base era visión clásica: umbral de color y <em>watershed</em>. Funciona, pero sólo porque los umbrales se eligieron mirando una escena concreta. Cambia la luz o el fondo y se rompe.</p>
+  <div class="envoltorio"><table>
+    <thead><tr><th></th><th>Error medio</th><th>Dentro de ±1</th><th>Exacto</th></tr></thead>
+    <tbody>
+      <tr><td>umbral de color</td><td class="n">3,78</td><td class="n">19%</td><td class="n">7%</td></tr>
+      <tr class="destaque"><td>YOLO26 entrenado</td><td class="n gana">1,39</td><td class="n gana">57%</td><td class="n gana">29%</td></tr>
+    </tbody>
+  </table></div>
+  <p>Y por densidad de colonia, el margen se sostiene: 0,76 contra 3,06 en las escenas ralas; 1,85 contra 4,55 en las más pobladas.</p>
+  <figure class="placa">
+  <img loading="lazy" decoding="async" src="medios/los-dos-contadores-sobre-las-mismas-imagenes.jpg" alt="Comparación lado a lado de dos métodos de conteo sobre tres imágenes aéreas">
+  <figcaption><span class="rotulo">Los dos contadores sobre las mismas imágenes</span>Izquierda: umbral clásico (círculos). Derecha: YOLO26 (cajas). Ninguno vio antes estas imágenes.</figcaption>
+</figure>
+
+  <h3>Decidir · un clasificador de 3&nbsp;MB</h3>
+  <p>La otra pregunta no es cuántos hay, sino si vale la pena gastar una foto. Es la decisión que tomaría el dron en vuelo, y necesita ser barata: <strong>3,6&nbsp;ms por cuadro</strong>.</p>
+  <p>El dataset original no servía para esto: <em>todas</em> las imágenes tenían animales, así que un clasificador habría dicho que sí siempre. Hicieron falta negativos, y de dos tipos. Mar abierto es el fácil. El difícil son las rocas peladas: mismo fondo, sin fauna. Sin ellas el modelo aprende «hay roca, hay fauna» y dispararía sobre cada piedra.</p>
+  <figure class="placa">
+  <img loading="lazy" decoding="async" src="medios/el-clasificador-sobre-cuadros-de-un-vuelo-real.jpg" alt="Cuatro cuadros de la cámara del dron con la decisión del modelo sobreimpresa">
+  <figcaption><span class="rotulo">El clasificador sobre cuadros de un vuelo real</span>Abajo a la derecha, el helipuerto: una estructura que no aparece en ninguna imagen de entrenamiento, y la descarta con 0,00. No aprendió el atajo «si no es agua, fotografiá».</figcaption>
+</figure>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Autonomía</span><h2>El dron decide qué fotografiar</h2></div>
+  <p>La ruta visita dos sitios: una colonia con doce animales y un <strong>señuelo</strong> —las mismas rocas, sin fauna—. Si toda la ruta pasara sobre animales, un modelo que dijera que sí siempre parecería perfecto.</p>
+
+  <div class="cadena">
+    <span class="eslabon">vuela</span><span class="flecha">→</span>
+    <span class="eslabon">evalúa cada cuadro</span><span class="flecha">→</span>
+    <span class="eslabon">decide</span><span class="flecha">→</span>
+    <span class="eslabon">captura</span><span class="flecha">→</span>
+    <span class="eslabon">cuenta lo que trajo</span>
+  </div>
+
+  <figure class="placa">
+  <video controls playsinline preload="none" poster="medios/vista-externa-con-la-camara-de-a-bordo-incrustada-cartel.jpg">
+    <source src="medios/vista-externa-con-la-camara-de-a-bordo-incrustada.mp4" type="video/mp4">Tu navegador no reproduce este video.
+  </video>
+  <figcaption><span class="rotulo">Vista externa con la cámara de a bordo incrustada</span>El borde y la barra muestran la decisión cuadro a cuadro. Verde sobre la colonia, rojo sobre el señuelo. La barra de confianza sube y baja según entra y sale la fauna del encuadre.</figcaption>
+</figure>
+
+  <h3>Contra lo que debería haber capturado</h3>
+  <p>La verdad de campo no se etiqueta: <strong>se calcula</strong>. Conocemos la ruta, la posición de cada animal y el campo de visión, así que se puede reconstruir para cada instante si había fauna en el encuadre.</p>
+  <div class="envoltorio"><table>
+    <thead><tr><th>Tramo</th><th>Cuadros</th><th>Debía</th><th>Capturó</th><th>Acierto</th></tr></thead>
+    <tbody>
+      <tr><td>Despegue</td><td class="n">15</td><td class="n">0</td><td class="n">2</td><td class="n">87%</td></tr>
+      <tr><td>Traslado</td><td class="n">29</td><td class="n">10</td><td class="n">8</td><td class="n">93%</td></tr>
+      <tr class="destaque"><td>Sobre la colonia</td><td class="n">25</td><td class="n">25</td><td class="n">25</td><td class="n gana">100%</td></tr>
+      <tr class="destaque"><td>Entre sitios</td><td class="n">13</td><td class="n">13</td><td class="n">13</td><td class="n gana">100%</td></tr>
+      <tr><td>Sobre el señuelo</td><td class="n">25</td><td class="n">2</td><td class="n">7</td><td class="n">72%</td></tr>
+      <tr><td>Regreso</td><td class="n">34</td><td class="n">0</td><td class="n">0</td><td class="n gana">100%</td></tr>
+      <tr><td>Aproximación</td><td class="n">14</td><td class="n">0</td><td class="n">0</td><td class="n gana">100%</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>93% de decisiones correctas.</strong> Tres capturas perdidas contra ocho de más, y esa asimetría es la buena: perder un dato es grave, gastar una foto es barato.</p>
+  <p>Al abrir las siete «de más» sobre el señuelo, resultó que el modelo tenía razón: son consecutivas al inicio del tramo, el señuelo entra por arriba y la colonia todavía se ve abajo. La medición era más estricta que la realidad, no al revés.</p>
+
+  <h3>El censo, desde las fotos que trajo</h3>
+  <p>El dron volvió con 54 fotos. El detector las cuenta: la mejor toma da <strong>17 animales</strong> contra <strong>12 reales</strong>.</p>
+  <figure class="placa">
+  <img loading="lazy" decoding="async" src="medios/cajas-duplicadas-sobre-el-mismo-animal.jpg" alt="Foto aérea con cajas de detección, varias superpuestas sobre los mismos animales">
+  <figcaption><span class="rotulo">Cajas duplicadas sobre el mismo animal</span>El sobreconteo tiene una causa rastreable a una decisión de etiquetado, y se explica abajo.</figcaption>
+</figure>
+  <p>El error es honesto y vale la pena mirarlo: en su propio conjunto de validación el modelo tiene sesgo <em>negativo</em> (−0,26), no sobrecuenta. El +5 aparece fuera de distribución, con el dron a otra altura y otro encuadre, y toma la forma de cajas repetidas sobre un mismo cuerpo.</p>
+  <p>La causa está en cómo se etiquetó: cuadrados de <em>tamaño fijo</em> centrados en cada animal. Dos animales cercanos generan cajas que se solapan mucho, y el modelo aprendió que ese solapamiento es legítimo. Subir el umbral de supresión no lo arregla —YOLO26 hace inferencia sin supresión no-máxima, así que las duplicadas no son un fallo de filtrado sino predicciones genuinas—. El arreglo de fondo es regenerar las etiquetas con cajas ajustadas a la orientación de cada cuerpo.</p>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Fundacionales</span><h2>Preguntarle a un modelo que nunca vio esta reserva</h2></div>
+  <p>Los dos modelos anteriores se fabricaron acá. La pregunta siguiente es qué hace un modelo <em>fundacional</em> —entrenado con millones de fotografías reales, sin haber visto jamás una imagen de este laboratorio— al que se le puede pedir lo que uno busca simplemente <strong>escribiéndolo</strong>.</p>
+  <p>Se probaron dos, en paralelo, sin descartar ninguno: <strong>SAM 2.1</strong> (88&nbsp;MB, hay que señalarle qué segmentar) y <strong>SAM 3</strong> (3,4&nbsp;GB, 840&nbsp;M parámetros, recibe una frase en inglés). El acceso a SAM 3 está bajo licencia de Meta; se solicitó y se aprobó durante este trabajo.</p>
+
+  <h3>La palabra correcta es la que peor funciona</h3>
+  <p>Primera sorpresa, y la más instructiva de todo el ejercicio. Sobre las 69 imágenes de validación —1010 animales, 14,6 por imagen— la frase <em>«sea lion»</em> encuentra <strong>cero</strong>. No pocos: ninguno. Su error absoluto medio es 14,64, que es exactamente la cantidad media de animales por imagen: el modelo siempre responde «no hay nada».</p>
+  <div class="envoltorio"><table>
+    <thead><tr><th>Frase</th><th>u=0,5</th><th>u=0,3</th><th>u=0,15</th><th>u=0,08</th></tr></thead>
+    <tbody>
+      <tr><td>«sea lion»</td><td class="n">14,64</td><td class="n">14,64</td><td class="n">14,57</td><td class="n">14,35</td></tr>
+      <tr><td>«seal»</td><td class="n">14,64</td><td class="n">14,64</td><td class="n">14,62</td><td class="n">14,17</td></tr>
+      <tr class="destaque"><td>«animal»</td><td class="n">13,00</td><td class="n">9,58</td><td class="n gana">7,68</td><td class="n">16,30</td></tr>
+      <tr class="destaque"><td>«brown animal»</td><td class="n">12,88</td><td class="n">8,30</td><td class="n gana">7,58</td><td class="n">20,61</td></tr>
+    </tbody>
+  </table></div>
+  <p>Error absoluto medio de conteo según la frase y el umbral de confianza. El modelo <em>sí ve</em> los animales —con «animal» los encuentra— pero no los reconoce como lobos marinos. Y no es que devuelva cualquier cosa: preguntándole por «rock» o por «water», sobre la misma imagen llena de piedra y de agua, devuelve cero. Discrimina; simplemente nuestros elipsoides marrones no son, para él, lobos.</p>
+
+  <figure class="placa">
+<img loading="lazy" decoding="async" src="medios/cuatro-maneras-de-contar-la-misma-escena.jpg" alt="Cuatro maneras de contar la misma escena">
+<figcaption><span class="rotulo">Cuatro maneras de contar la misma escena</span>Clásico, YOLO26 entrenado acá, SAM 2.1 y SAM 3 con dos frases distintas. Abajo a la derecha, el resumen sobre las 69 imágenes de validación que ningún modelo llegó a ver.</figcaption>
+</figure>
+
+  <p>El resultado se lee de un vistazo: <strong>un modelo de 5,1&nbsp;MB entrenado con las 234 imágenes que fabricó este mismo laboratorio le gana 5,5 veces a uno fundacional de 3,4&nbsp;GB</strong>. No porque sea mejor modelo, sino porque vio este dominio y el otro no.</p>
+
+  <h3>No es la resolución: es el realismo</h3>
+  <p>La primera hipótesis fue el tamaño. Los animales ocupan unos 25 píxeles y SAM 3 se entrenó con fotografías grandes. Se repitió todo ampliando las imágenes 2× y 3×: el error no mejoró, y «sea lion» siguió dando exactamente cero a las tres escalas. Interpolar no agrega información.</p>
+  <p>Lo que sí la agrega es volar más bajo. En 7 de las 56 fotos que trajo la misión autónoma —justo las del tramo en que el dron pasa cerca y oblicuo— la frase «sea lion» <em>sí</em> encuentra animales.</p>
+
+  <figure class="placa">
+<img loading="lazy" decoding="async" src="medios/vista-baja-y-oblicua-aca-si-los-reconoce.jpg" alt="Vista baja y oblicua: acá sí los reconoce">
+<figcaption><span class="rotulo">Vista baja y oblicua: acá sí los reconoce</span>La misma frase que no encontró nada a 9&nbsp;m de altura y en cenital detecta ocho instancias cuando la silueta —cuerpo, cabeza, aletas— se hace legible. La confianza sigue siendo baja: máximo 0,40.</figcaption>
+</figure>
+
+  <h3>Seguir no es contar</h3>
+  <p>Quedaba una idea por probar: en vez de fotos sueltas, correr el conteo sobre el <strong>video de una misión entera</strong>. La ventaja es la identidad persistente: un censo no pregunta «cuántos entran en este encuadre» sino «cuántos animales distintos vio el dron en todo el vuelo».</p>
+  <p>Se probaron las dos variantes sobre 120 cuadros del vuelo de censo. SAM&nbsp;2.1 no sabe qué es un lobo, así que se lo siembra YOLO26 y él propaga con memoria; SAM&nbsp;3 recibe la frase y resuelve detección e identidad por su cuenta.</p>
+
+  <figure class="placa">
+<video controls playsinline preload="none" poster="medios/sam-2-1-sembrado-por-yolo26-cartel.jpg">
+  <source src="medios/sam-2-1-sembrado-por-yolo26.mp4" type="video/mp4">
+</video>
+<figcaption><span class="rotulo">SAM 2.1 · sembrado por YOLO26</span>Diecinueve identidades, que duran entre 14 y 60 cuadros. Diecinueve son exactamente las cajas que le dio YOLO en el cuadro semilla: el rastreador no corrige al detector, lo propaga.</figcaption>
+</figure>
+  <figure class="placa">
+<video controls playsinline preload="none" poster="medios/sam-3-frase-animal-cartel.jpg">
+  <source src="medios/sam-3-frase-animal.mp4" type="video/mp4">
+</video>
+<figcaption><span class="rotulo">SAM 3 · frase «animal»</span>Seis identidades estables. Nada durante los primeros 27 cuadros —el dron todavía está lejos— y después máscaras que envuelven grupos enteros en lugar de animales sueltos.</figcaption>
+</figure>
+
+  <div class="envoltorio"><table>
+    <thead><tr><th>Rastreo sobre video</th><th>Identidades</th><th>Verdad</th><th>Error</th><th>VRAM</th></tr></thead>
+    <tbody>
+      <tr><td>SAM 2.1 + semilla YOLO26</td><td class="n">19</td><td class="n">14</td><td class="n">+5</td><td class="n">3,91 GB</td></tr>
+      <tr><td>SAM 3 · «animal»</td><td class="n">6</td><td class="n">14</td><td class="n">−8</td><td class="n">3,69 GB</td></tr>
+    </tbody>
+  </table></div>
+
+  <figure class="placa">
+<img loading="lazy" decoding="async" src="medios/tres-momentos-de-cada-rastreo.jpg" alt="Tres momentos de cada rastreo">
+<figcaption><span class="rotulo">Tres momentos de cada rastreo</span>Arriba SAM 2.1, abajo SAM 3, en los cuadros 10, 40 y 80. En el cuadro 10 el dron sobrevuela el helipuerto: SAM 3 correctamente no ve nada.</figcaption>
+</figure>
+
+  <p>Los dos fallan, y por motivos opuestos que valen más que el número: SAM 2.1 hereda el sobreconteo del detector que lo sembró, y SAM 3 fusiona grupos vecinos en un solo objeto. Pero hay un fallo más profundo, común a los dos, y es el que hace interesante el experimento: <strong>el seguimiento con memoria asume que el objeto se queda en cuadro</strong>. Un vuelo de relevamiento hace lo contrario: pasa una vez sobre cada animal y sigue de largo. Por eso el censo bueno no sale del video sino de georreferenciar —proyectar cada detección a coordenadas del mundo y fusionar allá, donde el animal no se mueve aunque la cámara sí.</p>
+
+  <div class="hallazgo">
+    <h4>El detector dispara sobre el helipuerto</h4>
+    <p>El primer intento sembró SAM 2.1 en «el primer cuadro con al menos tres detecciones». Ese cuadro resultó ser el helipuerto: YOLO26 encontró diez animales en los anillos concéntricos de cemento, y SAM 2.1 se pasó el vuelo persiguiendo manchas. Siete de las diez pistas murieron en un solo cuadro.</p>
+    <p>El error era del diseño del experimento, no del rastreador —se corrigió sembrando en el cuadro de máxima detección—, pero dejó a la vista algo real: un detector entrenado únicamente con escenas de reserva no tiene ninguna noción de qué <em>no</em> es un lobo. En los 18 cuadros siguientes al helipuerto no detecta nada; el pico es aislado y delator.</p>
+  </div>
+
+  <h3>El mismo censo, con los cuatro métodos</h3>
+  <p>Sobre las 56 fotos que la misión autónoma decidió sacar por su cuenta, con el mismo criterio que se usó para YOLO —el censo es el pico, la foto donde más colonia entra en el encuadre—:</p>
+  <div class="envoltorio"><table>
+    <thead><tr><th>Método</th><th>Pico</th><th>Real</th><th>Error</th><th>Media/foto</th><th>Fotos con algo</th></tr></thead>
+    <tbody>
+      <tr><td>YOLO26n (entrenado acá)</td><td class="n">17</td><td class="n">12</td><td class="n">+5</td><td class="n">9,0</td><td class="n">54</td></tr>
+      <tr class="destaque"><td>SAM 2.1 (zero-shot)</td><td class="n">13</td><td class="n">12</td><td class="n gana">+1</td><td class="n">4,3</td><td class="n">51</td></tr>
+      <tr><td>SAM 3 · «brown animal»</td><td class="n">29</td><td class="n">12</td><td class="n">+17</td><td class="n">15,5</td><td class="n">55</td></tr>
+      <tr><td>SAM 3 · «sea lion»</td><td class="n">8</td><td class="n">12</td><td class="n">−4</td><td class="n">0,6</td><td class="n">7</td></tr>
+    </tbody>
+  </table></div>
+  <p>Acá SAM 2.1 parece ganar, y conviene no creerle. El criterio del pico premia a quien subcuenta con moderación: SAM 2.1 promedia 4,3 animales por foto —muy por debajo de la verdad— y su máximo cae cerca de 12 por aritmética, no por acierto. En su propio conjunto de validación su error es 6,52 contra 1,39 de YOLO26. Un estimador que acierta el total equivocándose en cada foto no es un buen estimador; es una casualidad con suerte.</p>
+  <p>El dato honesto de esta tabla es otro: la correlación foto a foto entre YOLO26 y SAM 3 es <strong>0,83</strong>. Coinciden bastante en <em>dónde</em> hay animales; discrepan en <em>cuántos</em>. Eso sugiere que el modelo fundacional serviría como detector de zonas de interés —«acá hay algo»— y el modelo entrenado acá como contador.</p>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Mediciones</span><h2>Lo que costó averiguar</h2></div>
+  <p>Hallazgos que no estaban en ninguna documentación y que costaron reinicios forzados y vuelos fallidos. Van acá porque son la parte más transferible del trabajo.</p>
+
+  <div class="hallazgo">
+    <h4>El sensor de cámara pierde memoria, y colgaba la máquina</h4>
+    <p>No era falta de memoria: con swap disponible el kernel prefería paginar, y el escritorio quedaba inutilizable sin que nada muriera. <code>systemd-oomd</code> está activo pero no vigila los contenedores de Docker.</p>
+    <div class="consola">sin cámara ...............  291 MB planos durante 5 min
+1280x960 @ 30 Hz .........  ~50 MB/s  → 5 GB y muerto en ~80 s
+ 640x480 @  5 Hz .........  ~4,3 MB/s → ~15 min de margen</div>
+    <p style="margin-top:12px">El arreglo de fondo son techos de memoria por contenedor con el swap prohibido: convierte un cuelgue de la máquina en la muerte de un proceso.</p>
+  </div>
+
+  <div class="hallazgo">
+    <h4>Gazebo usa ENU y PX4 usa NED</h4>
+    <p>La reserva está 26&nbsp;m al <em>este</em>. Pedirle <code>x=26</code> al autopiloto lo manda 26&nbsp;m al <em>norte</em>. El dron volaba perfecto, fotografiaba perfecto, y las imágenes salían del lugar equivocado.</p>
+  </div>
+
+  <div class="hallazgo">
+    <h4>Torch no puede convivir con ROS en el mismo contenedor</h4>
+    <p>Los paquetes ROS compilados están enlazados contra una versión concreta de numpy. Instalar torch al lado la reemplaza y rompe la ABI. Los modelos se entrenan en un contenedor con GPU y se ejecutan en el de ROS exportados a ONNX — que es además lo que uno haría para llevarlos a una computadora de a bordo.</p>
+  </div>
+
+  <div class="hallazgo">
+    <h4>Los fallos silenciosos cuestan más que los ruidosos</h4>
+    <p>Catorce animales de una escena anterior quedaron en el mundo, <em>sin etiqueta</em>, contaminando cada imagen del dataset — eso le enseña al modelo que un lobo marino es fondo, y sólo se ve dibujando las cajas encima. Un helipuerto con colisión sobre el punto donde nace el dron: armaba, entraba en modo offboard, recibía órdenes y no se movía, sin un mensaje de error. Un servicio que devolvía «éxito» sin crear nada.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Todo el material de esta página se generó en simulación, en una computadora de escritorio con una GPU de 6&nbsp;GB. Los videos son capturas de pantalla de ejecuciones reales; las imágenes aéreas salen de la cámara simulada del dron; las cifras, de mediciones sobre esas ejecuciones. Nadie etiquetó una sola caja a mano.</p>
+  <p>Construido sobre ROS&nbsp;2 Jazzy Jalisco y Gazebo Harmonic, ambos con soporte hasta mayo de 2029.</p>
+</footer>
+
+</div>
+
+</body>
+</html>
