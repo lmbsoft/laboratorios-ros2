@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Un ROV en el Golfo San Matías · Informe 02</title>
+<meta name="description" content="Un ROV BlueROV2 simulado releva un banco de vieira tehuelche en el Golfo San Matías: agua con visibilidad variable, cable umbilical que se enreda, y un copiloto de percepción que mira con el operador.">
+<meta property="og:title" content="Un ROV en el Golfo San Matías">
+<meta property="og:description" content="Un ROV BlueROV2 simulado releva un banco de vieira tehuelche en el Golfo San Matías: agua con visibilidad variable, cable umbilical que se enreda, y un copiloto de percepción que mira con el operador.">
+<meta property="og:image" content="portada.jpg">
+<meta property="og:type" content="article">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,600;1,6..72,400&family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../estilo.css">
+</head>
+<body>
+
+<div class="hoja">
+
+<p class="volver"><a href="../">&#8592; Todos los informes</a></p>
+
+<header class="tapa">
+  <p class="marca">ROS 2 Jazzy · Gazebo Harmonic · BlueROV2 · YOLO26 · SAM 2.1 · SAM 3 · Docker</p>
+  <h1>Un ROV en el Golfo San Matías</h1>
+  <p class="bajada">Un vehículo submarino simulado releva un banco de vieira tehuelche por video-transecto: se sumerge, recorre, se detiene a mirar de cerca y vuelve sin dejar el cable enredado. El agua no es transparente y cambia; el vehículo se ciega a sí mismo cuando se acerca al fondo. Y arriba, en la consola, un copiloto mira los cuadros que al operador se le pasan mientras pilotea.</p>
+  <div class="cifras">
+    <div class="cifra"><b>8</b><span>propulsores, 6 grados de libertad</span></div>
+    <div class="cifra"><b>4</b><span>aguas por escena</span></div>
+    <div class="cifra"><b>−2,6%</b><span>error del censo</span></div>
+    <div class="cifra"><b>42 ms</b><span>por cuadro, en CPU</span></div>
+    <div class="cifra"><b>0</b><span>etiquetas a mano</span></div>
+  </div>
+</header>
+
+<section>
+  <div class="etapa"><span class="num">Contexto</span><h2>Por qué este escenario</h2></div>
+  <p>El Golfo San Matías, en Río Negro, sostiene la pesquería bentónica histórica de la región: la <em>vieira tehuelche</em> (<i>Aequipecten tehuelchus</i>). Los bancos se evalúan contando individuos por metro cuadrado sobre <strong>transectos</strong> —líneas recorridas contando todo lo que cae dentro de una banda—, y esa cuenta decide cuánto se puede pescar.</p>
+  <p>Hacerlo con un ROV en vez de con dragas tiene una ventaja obvia y un problema no obvio. La ventaja: no destruye el fondo que se está midiendo. El problema: abajo del agua no hay GPS, la visibilidad cambia de una inmersión a la otra, y el vehículo cuelga de un cable que se engancha en todo.</p>
+  <p>Este informe construye ese escenario completo en simulación y lo mide. Es la continuación del <a href="../01-laboratorio-ros2/">informe anterior</a> —el dron que releva lobos marinos— y aplica lo que allá se aprendió a los golpes: sobre todo, <strong>para qué sirve cada herramienta</strong>.</p>
+
+  <div class="envoltorio"><table>
+    <thead><tr><th>Herramienta</th><th>En el informe anterior</th><th>Acá, donde sí corresponde</th></tr></thead>
+    <tbody>
+      <tr><td>YOLO26 entrenado</td><td>contar lobos · ganó</td><td>contar vieiras · instancias discretas</td></tr>
+      <tr><td>SAM 2 en video</td><td>seguir en un vuelo · <em>falló</em></td><td>foto-cuadrante con la cámara quieta</td></tr>
+      <tr><td>SAM 3 con texto</td><td>contar por frase · <em>falló</em></td><td>cobertura de alga · región semántica</td></tr>
+    </tbody>
+  </table></div>
+  <p>Las dos fallas del informe anterior no eran de los modelos: les pedimos lo que no hacen. Un rastreador con memoria necesita que el objeto se quede en cuadro, y un relevamiento pasa una vez y sigue de largo. Un segmentador da regiones, no individuos. Acá cada uno va donde su forma de trabajar coincide con la pregunta.</p>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Vehículo</span><h2>Un BlueROV2 que se comporta como uno</h2></div>
+  <p>Gazebo Harmonic ya trae la física submarina y no hizo falta agregar ningún simulador: <strong>flotación graduada</strong> (aire arriba de la superficie, agua de mar de 1025&nbsp;kg/m³ debajo), <strong>hidrodinámica de Fossen</strong>, <strong>propulsores</strong> con modelo de hélice, y hasta un <strong>sensor DVL</strong>, que es el instrumento con el que un ROV sabe dónde está cuando no hay GPS.</p>
+  <p>El vehículo es un BlueROV2 en configuración <em>Heavy</em>, con los coeficientes hidrodinámicos publicados para ese casco. Masa 11,5&nbsp;kg y 11,4&nbsp;litros desplazados: <strong>flotabilidad positiva de 190 gramos</strong>, que no es un descuido sino una decisión de seguridad —un ROV que se hunde cuando falla la energía es un ROV perdido—. Medido en el simulador, sube solo a 0,19&nbsp;m/s contra los 0,22 que predice el cálculo.</p>
+
+  <div class="hallazgo">
+    <h4>Con dos propulsores verticales, el ROV vuelca</h4>
+    <p>La primera versión usaba la configuración estándar de seis propulsores: cuatro horizontales vectorizados y dos verticales alineados sobre el mismo eje. Esa disposición <strong>no da ningún control de cabeceo</strong>, y lo único que endereza al vehículo son los 2&nbsp;cm entre centro de masa y centro de flotación: 2,3&nbsp;N·m.</p>
+    <p>No alcanzó. Durante el transecto el ROV volcó, y lo que se vio fue desconcertante: los verticales ordenando el máximo <em>hacia abajo</em> mientras el vehículo subía a la superficie. Volcado, «abajo» para el propulsor ya no era abajo para el mundo. La configuración Heavy —cuatro verticales en las esquinas— da los seis grados de libertad, y la matriz de asignación resuelta por pseudo-inversa tiene rango 6 sin acoplamiento entre ejes.</p>
+  </div>
+
+  <div class="hallazgo">
+    <h4>La masa añadida hacía abortar el simulador, sin decir por qué</h4>
+    <p>Al acelerar bajo el agua hay que mover también el agua que rodea al casco, y eso se comporta como masa extra. En vertical son 14,57&nbsp;kg contra 11,5 del vehículo: <strong>más que el ROV entero</strong>.</p>
+    <p>Aplicada como fuerza explícita —que es lo que hace el plugin de hidrodinámica con <span class="marca">&lt;zDotW&gt;</span>— un término de masa añadida mayor que la masa real hace divergir la integración. El ROV se dispara a coordenadas enormes, ODE desborda el índice entero de su espacio de colisiones y Gazebo aborta con <em>«assertion aabbBound &gt;= dMinIntExact failed»</em>, sin mencionar jamás la palabra hidrodinámica. Declarada en <span class="marca">&lt;fluid_added_mass&gt;</span> dentro de la inercia, el motor de física la resuelve de forma implícita y es estable.</p>
+  </div>
+
+  <div class="hallazgo">
+    <h4>El empuje sale de la caja de colisión, no del modelo</h4>
+    <p>El plugin de flotación calcula el volumen desplazado a partir de la geometría de colisión. Con la caja del tamaño real del vehículo eso daba 39 litros: <strong>40&nbsp;kg de empuje contra 11,5 de peso</strong>, y el ROV no podía sumergirse ni con los dos verticales al máximo. Un BlueROV2 real es un chasis abierto y casi todo su volumen exterior es agua que entra y sale. La caja de colisión se escala a 0,663 para desplazar los 11,4 litros verdaderos.</p>
+  </div>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Agua</span><h2>No existen las aguas cristalinas</h2></div>
+  <p>Esta es la parte que hace que el ejercicio sirva para algo. Un modelo entrenado en agua limpia simulada fracasa en video real por la misma razón por la que, en el informe anterior, SAM 3 no reconoció a nuestros lobos marinos: la simulación no se parece lo suficiente.</p>
+  <p>La degradación no se renderiza en Gazebo sino que se aplica sobre la imagen, con el modelo físico de formación de imagen submarina. Por canal:</p>
+  <div class="consola">I = J · e<sup>−β·d</sup> + B · (1 − e<sup>−β·d</sup>)</div>
+  <p>donde <b>J</b> es lo que renderiza Gazebo, <b>d</b> la distancia al punto, <b>β</b> el coeficiente de atenuación —<strong>distinto por canal</strong>, y ahí está la clave de por qué el agua se ve verde: el rojo se extingue en los primeros metros— y <b>B</b> la luz de velo, el color del agua al infinito.</p>
+  <p>La distancia de cada píxel sale de intersecar su rayo con el plano del fondo usando la pose del ROV, sin ninguna cámara de profundidad: un sensor más habría sumado el mismo consumo y la misma fuga de memoria que en el laboratorio del dron costó dos reinicios forzados.</p>
+  <p>Encima se suman tres cosas que agrega el propio vehículo: la <strong>retrodispersión</strong> de los focos sobre las partículas en suspensión —que es la razón por la que subir la potencia de las luces en agua turbia empeora la visión—, la <strong>nieve marina</strong>, y la <strong>pluma de sedimento</strong> que el ROV levanta cuando se acerca al fondo o empuja fuerte. Esa última convierte «volar bajo para ver mejor» en una decisión con costo.</p>
+
+  <figure class="placa">
+<img loading="lazy" decoding="async" src="medios/escalera-de-turbidez.jpg" alt="El mismo fondo con cinco aguas">
+<figcaption><span class="rotulo">El mismo fondo con cinco aguas</span>Todas salen del mismo cuadro renderizado; lo único que cambia es el coeficiente de atenuación. La visibilidad va de 7,3&nbsp;m a 2,6&nbsp;m.</figcaption>
+</figure>
+
+  <figure class="placa">
+<img loading="lazy" decoding="async" src="medios/render-limpio-y-agua.jpg" alt="Lo que rinde Gazebo y lo que ve el ROV">
+<figcaption><span class="rotulo">Lo que rinde Gazebo y lo que ve el ROV</span>A la izquierda el render limpio, con las vieiras y un pulpito arriba a la izquierda. A la derecha, la misma escena a través de dos metros de agua cargada.</figcaption>
+</figure>
+
+  <p>Aplicar el agua sobre la imagen y no en el render tiene una consecuencia que resultó ser la más útil de todas: <strong>el mismo cuadro se procesa con cuatro turbideces sin volver a correr el simulador</strong>. El agua deja de ser un obstáculo y pasa a ser el aumento de datos del entrenamiento.</p>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Misión</span><h2>Sumergirse, recorrer, mirar de cerca, y volver sin enredarse</h2></div>
+  <p>La misión tiene cuatro fases. La <strong>inmersión</strong> baja hasta la altura de trabajo sobre el punto de arranque. El <strong>transecto</strong> recorre una serpentina a 1,6&nbsp;m del fondo, con las líneas separadas 1,75&nbsp;m: la cámara cenital abarca 2,19&nbsp;m a esa altura, así que queda 20% de solape. Sin solape quedan franjas sin ver, y un censo con huecos no es un censo. La <strong>tarea</strong> se detiene sobre el parche más denso y hace un foto-cuadrante más cerca del fondo. El <strong>retorno</strong> vuelve sin tensar el cable.</p>
+
+  <figure class="placa">
+<img loading="lazy" decoding="async" src="medios/planta-de-la-mision.jpg" alt="Planta del relevamiento y estado del umbilical">
+<figcaption><span class="rotulo">Planta del relevamiento y estado del umbilical</span>A la izquierda el recorrido sobre el banco, con los puntos naranjas donde el ROV tuvo que elevarse para no engancharse. A la derecha, la altura sobre el fondo y las vueltas acumuladas del cable.</figcaption>
+</figure>
+
+  <figure class="placa">
+<video controls playsinline preload="none" poster="medios/transecto-camara-cenital-cartel.jpg">
+  <source src="medios/transecto-camara-cenital.mp4" type="video/mp4">
+</video>
+<figcaption><span class="rotulo">El transecto, desde la cámara cenital</span>Los 1570 cuadros del relevamiento a 12 fps, tres veces más rápido que el tiempo real. Es la cámara con la que se cuenta: cenital, para que cada píxel abarque la misma superficie de fondo.</figcaption>
+</figure>
+
+  <div class="hallazgo">
+    <h4>La línea de vuelo pasaba exactamente por las copas de las algas</h4>
+    <p>La serpentina se traza plana a 1,6&nbsp;m del fondo. Las algas <i>Undaria</i> llegan a medir 1,6&nbsp;m. En la primera corrida el ROV se trabó contra una y quedó clavado a 8&nbsp;cm del fondo con los verticales al máximo, sin avanzar y sin ningún mensaje de error.</p>
+    <p>Ahora se mira un tramo por delante de la trayectoria y se toma la copa más alta que se cruce. Pasar <strong>por encima</strong> y no rodeando no es indistinto: el cable cuelga desde arriba, así que rodear un obstáculo lo enrolla y pasar por encima no. Tiene un costo que conviene decir: subir agranda la huella de la cámara y baja la resolución sobre el fondo. En esta misión el ROV se elevó en <strong>428 de 9544 muestras</strong>, con la altura yendo de 1,60 a 2,14&nbsp;m.</p>
+  </div>
+
+  <h3>El cable, que es el problema que no tiene un dron</h3>
+  <p>Un ROV no es autónomo: cuelga de un umbilical que lo alimenta y le trae el video, y ese cable es lo que más limita la misión. Acá se modela como una <strong>catenaria</strong> —la curva que adopta un cable colgando— resuelta analíticamente, sin dinámica. Cuesta microsegundos y da la geometría correcta en régimen, que alcanza para responder la única pregunta que importa: por dónde pasa.</p>
+  <p>Lo interesante es el enrollado, que es un problema de verdad. Dos caminos que terminan en el mismo punto <em>no son equivalentes</em> si el cable quedó rodeando un obstáculo por distinto lado. Se lleva, por cada obstáculo, el ángulo acumulado que el ROV barrió a su alrededor: si supera una vuelta, el cable está enrollado y volver en línea recta lo va a tensar contra el obstáculo en vez de liberarlo.</p>
+
+  <div class="envoltorio"><table>
+    <thead><tr><th>Modo de retorno</th><th>Vueltas al empezar</th><th>Al terminar</th></tr></thead>
+    <tbody>
+      <tr class="destaque"><td>desandando el camino</td><td class="n">1,56</td><td class="n gana">1,01</td></tr>
+      <tr><td>directo, desenrollando el obstáculo</td><td class="n">1,56</td><td class="n">2,99</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>El primer intento fue el geométrico: rodear en sentido contrario el obstáculo con más vueltas acumuladas. <strong>Medido, empeoró las cosas</strong>, y el motivo es lo que hace difícil el problema: rodear un obstáculo para desenrollarlo hace pasar el cable alrededor de otros, y el enredo se muda en vez de resolverse.</p>
+  <p>Lo que sí funciona es lo que hace un piloto con el cable trabado: <strong>volver por donde vino</strong>. Retrazar la trayectoria invierte exactamente todos los ángulos acumulados, alrededor de todos los obstáculos a la vez, sin tener que razonar sobre ninguno. No llega a cero porque el foto-cuadrante agrega vueltas que no están en el rastro, pero deja el cable tres veces mejor que la alternativa.</p>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Datos</span><h2>Etiquetas gratis, y el agua como aumento</h2></div>
+  <p>Nadie etiquetó una sola caja. El simulador sabe dónde puso cada valva y el ROV registró su pose en cada cuadro; proyectar lo primero con lo segundo da la etiqueta, exacta por construcción. De 1570 cuadros capturados salieron <strong>656 imágenes</strong> (520 de entrenamiento, 136 de validación) con 933 cajas por turbidez y dos clases: vieira y pulpito.</p>
+
+  <figure class="placa">
+<img loading="lazy" decoding="async" src="medios/etiquetas-proyectadas.jpg" alt="La proyección, verificada sobre el render limpio">
+<figcaption><span class="rotulo">La proyección, verificada sobre el render limpio</span>El círculo verde es la posición calculada; el disco claro es la valva que Gazebo dibujó. La verificación se hace sobre la imagen sin agua, donde no hay ambigüedad posible.</figcaption>
+</figure>
+
+  <div class="hallazgo">
+    <h4>La cámara no está donde está el ROV</h4>
+    <p>La primera versión proyectaba desde la pose del vehículo. La cámara del transecto va montada 5&nbsp;cm hacia proa y 13&nbsp;cm por debajo del centro, y a 1,6&nbsp;m de altura esos 5&nbsp;cm son casi 15 píxeles: más que el radio de una valva. Medido contra los centros que se ven realmente en la imagen, el sesgo pasó de <strong>+13,6 px a −1,0 px</strong> al incluir el montaje.</p>
+    <p>Quedaba un residuo, y era el segundo error: proyectar usando sólo el rumbo, como si el ROV estuviera siempre horizontal. No lo está —el cabeceo mediano es de 0,21° pero llega a 40° en las maniobras— y cuatro grados de cabeceo a 1,9&nbsp;m desplazan la proyección 36 píxeles. Con la actitud completa el error medio baja a 9,8 px, que es ruido del emparejamiento.</p>
+  </div>
+
+  <p>Cada cuadro genera cuatro muestras, una por turbidez. No es un aumento de datos genérico como girar o cambiar el brillo: es exactamente la variación que el modelo va a encontrar en el mar, generada con el mismo modelo físico.</p>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Contar</span><h2>¿Hasta con qué agua sirve el conteo?</h2></div>
+  <p>Esa es la pregunta operativa. Un biólogo no necesita saber el mAP: necesita saber si el día que el agua está cargada puede confiar en el número o tiene que contar a mano. El modelo entrenado es un <strong>YOLO26n de 5,4&nbsp;MB</strong> (mAP50 0,702), y se compara contra un detector clásico por umbral adaptativo, que es lo que uno haría sin aprendizaje.</p>
+
+  <div class="envoltorio"><table>
+    <thead><tr><th>Turbidez</th><th>Visibilidad</th><th>YOLO26</th><th>Clásico</th><th>Censo YOLO</th><th>Censo real</th></tr></thead>
+    <tbody>
+      <tr><td>0,10</td><td class="n">7,3 m</td><td class="n gana">0,94</td><td class="n">2,94</td><td class="n">115</td><td class="n">105</td></tr>
+      <tr><td>0,35</td><td class="n">4,5 m</td><td class="n gana">1,24</td><td class="n">7,50</td><td class="n">97</td><td class="n">105</td></tr>
+      <tr><td>0,60</td><td class="n">3,3 m</td><td class="n gana">1,15</td><td class="n">18,76</td><td class="n">104</td><td class="n">105</td></tr>
+      <tr><td>0,85</td><td class="n">2,6 m</td><td class="n gana">1,65</td><td class="n">26,29</td><td class="n">93</td><td class="n">105</td></tr>
+      <tr class="destaque"><td><b>global</b></td><td class="n">—</td><td class="n gana"><b>1,24</b></td><td class="n"><b>13,88</b></td><td class="n"><b>409</b></td><td class="n"><b>420</b></td></tr>
+    </tbody>
+  </table></div>
+  <p>Error absoluto medio de conteo por imagen. <strong>YOLO26 se degrada con gracia</strong> —de 0,94 a 1,65 mientras la visibilidad cae de 7,3 a 2,6 metros— porque el agua estaba en su entrenamiento. El detector clásico se degrada nueve veces: cuenta la nieve marina como vieiras. Y el censo completo queda a <strong>2,6% del valor real</strong>.</p>
+
+  <div class="hallazgo">
+    <h4>El umbral de confianza es una decisión de medición, no un ajuste</h4>
+    <p>Con el 0,35 habitual, el censo subcontaba el <strong>49,5%</strong>: 212 de 420. No porque el modelo no viera las valvas, sino porque las veía con poca confianza y el umbral las tiraba. Barriendo el umbral aparece algo que conviene tener presente: <em>el óptimo depende de qué se quiera medir</em>. Para el error por imagen, 0,25. Para que el <strong>total</strong> quede insesgado —que es lo que le importa a un censo— 0,20, con sesgo de −0,08 por imagen.</p>
+  </div>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Seguir</span><h2>Donde el rastreo en video sí gana</h2></div>
+  <p>En el informe anterior el rastreo con memoria falló sobre un vuelo de relevamiento, por un motivo que no era del modelo: el seguimiento asume que el objeto se queda en cuadro, y un relevamiento pasa una vez y sigue de largo.</p>
+  <p>El foto-cuadrante es el caso opuesto. El ROV se detiene sobre un parche —la deriva medida es de <strong>21&nbsp;cm</strong> en los diez cuadros estacionarios— y la pregunta pasa a ser «cuántos individuos <em>distintos</em> hay acá», que es lo que hace falta para estimar densidad por metro cuadrado.</p>
+
+  <div class="envoltorio"><table>
+    <thead><tr><th>Método</th><th>Conteo</th><th>Verdad</th><th>Desvío entre cuadros</th></tr></thead>
+    <tbody>
+      <tr><td>YOLO26 cuadro a cuadro (media)</td><td class="n">10,5</td><td class="n">15</td><td class="n">4,01</td></tr>
+      <tr class="destaque"><td>SAM 2.1 · identidades persistentes</td><td class="n gana">13</td><td class="n">15</td><td class="n">3,20</td></tr>
+    </tbody>
+  </table></div>
+  <p>SAM 2.1 no sabe qué es una vieira: se la señala YOLO26 en el cuadro donde más ve, y él propaga con memoria hacia adelante y hacia atrás. Híbrido a propósito — el detector sabe qué buscar, el rastreador sabe no perderlo. Contando cuadro a cuadro el número baila con cada detección perdida; con identidad persistente cada valva se cuenta una vez.</p>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Segmentar</span><h2>Cobertura de alga invasora, con una frase</h2></div>
+  <p><i>Undaria pinnatifida</i> es un alga parda que llegó a la Patagonia en agua de lastre. Lo que se mide de ella no es cuántas hay —un manchón de alga no tiene individuos separables desde arriba— sino <strong>qué porcentaje del fondo ocupan</strong>. Eso es una región semántica, y es exactamente para lo que sirve segmentar.</p>
+
+  <figure class="placa">
+<img loading="lazy" decoding="async" src="medios/alga-limpia-y-turbia.jpg" alt="El par que hace posible medir sin etiquetar">
+<figcaption><span class="rotulo">El par que hace posible medir sin etiquetar</span>La imagen limpia da la referencia; la turbia es la entrada. La pregunta es cuánta cobertura recupera cada método cuando el agua se cierra.</figcaption>
+</figure>
+
+  <div class="envoltorio"><table>
+    <thead><tr><th>Frase</th><th>Cobertura estimada</th><th>Real</th><th>Error</th><th>IoU</th></tr></thead>
+    <tbody>
+      <tr><td>«kelp»</td><td class="n">0,0%</td><td class="n">10,2%</td><td class="n">10,2</td><td class="n">0,000</td></tr>
+      <tr><td>«seaweed»</td><td class="n">0,0%</td><td class="n">10,2%</td><td class="n">10,2</td><td class="n">0,000</td></tr>
+      <tr class="destaque"><td>«object»</td><td class="n gana">11,8%</td><td class="n">10,2%</td><td class="n gana">3,3</td><td class="n gana">0,548</td></tr>
+      <tr><td>umbral de color (clásico)</td><td class="n">0,0%</td><td class="n">10,2%</td><td class="n">10,2</td><td class="n">0,000</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>Con «object», SAM 3 recupera la cobertura con un IoU de <strong>0,548 sobre la imagen turbia y sin entrenar nada</strong>, mientras el método por color queda en cero porque el agua le corrió los colores. Pero el resultado más interesante es el de arriba de la tabla, y <strong>replica exactamente lo que pasó con los lobos marinos</strong>: el modelo ve los objetos y no sabe qué son. Barriendo frases sobre la misma imagen responde a «object» con confianza 0,77, y devuelve cero a «kelp», «seaweed», «plant», «rock» y «sand» por igual.</p>
+  <p>Dos sujetos completamente distintos, la misma conclusión: <strong>el límite de un modelo fundacional sobre esta simulación es el realismo, no el vocabulario</strong>. Ve que hay algo; no lo reconoce.</p>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Copiloto</span><h2>Mirar con el operador, no en lugar del operador</h2></div>
+  <p>Acá está el cambio de fondo respecto del informe anterior. Allá el modelo <em>decidía</em>: sacaba la foto o no. Un ROV lo pilotea una persona y va a seguir siendo así, porque nadie le cede el control de un vehículo caro atado a un cable. El modelo mira los mismos cuadros y avisa.</p>
+  <p>Eso invierte el criterio de calidad. Un sistema autónomo tiene que acertar; un asistente tiene que <strong>no perderse nada</strong>. Si marca algo que no era, el operador lo descarta en un segundo; si no marca el único pulpito de la inmersión, esa observación se perdió y el barco ya pasó. Y hay un argumento más concreto: el operador está ocupado. Mira profundidad, rumbo, cable y obstáculos mientras maniobra. Los cuadros que pasan mientras corrige el rumbo no los ve nadie.</p>
+
+  <figure class="placa">
+<video controls playsinline preload="none" poster="medios/copiloto-vista-de-proa-cartel.jpg">
+  <source src="medios/copiloto-vista-de-proa.mp4" type="video/mp4">
+</video>
+<figcaption><span class="rotulo">El copiloto durante una inmersión completa</span>Vista de proa con la degradación del agua aplicada. El panel inferior es lo que vería el operador en su consola. YOLO26 exportado a ONNX, corriendo en CPU a 42&nbsp;ms por cuadro.</figcaption>
+</figure>
+
+  <figure class="placa">
+<img loading="lazy" decoding="async" src="medios/avisos-del-copiloto.jpg" alt="Dos de los tres avisos">
+<figcaption><span class="rotulo">Dos de los tres avisos</span>A la izquierda, visibilidad degradada: el contraste cayó a 0,032 y no se ve nada. A la derecha, 57 vieiras en cuadro contra 6 habituales — conviene detenerse.</figcaption>
+</figure>
+
+  <div class="envoltorio"><table>
+    <thead><tr><th>Aviso</th><th>Veces en una inmersión</th><th>Qué significa</th></tr></thead>
+    <tbody>
+      <tr><td>pulpito</td><td class="n">11</td><td>especie rara en cuadro, confianza 0,22 a 0,97</td></tr>
+      <tr><td>densidad</td><td class="n">31</td><td>parche en el decil superior del sitio</td></tr>
+      <tr><td>visibilidad</td><td class="n">586</td><td>el ROV está levantando sedimento</td></tr>
+    </tbody>
+  </table></div>
+  <p>Sobre 4303 cuadros, el 14,6% lleva algún aviso. El detector corre en el contenedor del ROV con <strong>ONNX Runtime sobre CPU</strong>, sin torch: instalarlo habría significado duplicar once gigabytes de imagen para ejecutar un modelo de cinco megabytes.</p>
+
+  <div class="hallazgo">
+    <h4>Un umbral absoluto de densidad no significa nada</h4>
+    <p>Probamos ocho vieiras en cuadro: no disparó nunca. Probamos cuatro: disparó en el <strong>52% de los cuadros</strong>. Es el mismo error por los dos lados, y el problema es la pregunta: ocho vieiras es mucho en un banco pobre y poco en uno bueno.</p>
+    <p>Lo que un biólogo quiere saber es dónde está lo denso <em>para este banco</em>. Así que el aviso es relativo: se dispara cuando el cuadro entra en el decil superior de lo que se viene viendo en la inmersión. Se calibra solo, en cada sitio, sin que nadie elija un número. Con eso pasó de 2091 avisos a 31.</p>
+  </div>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Mediciones</span><h2>Lo que costó averiguar</h2></div>
+  <p>Hallazgos que no estaban en ninguna documentación. Van acá porque son la parte más transferible: casi todos son fallas <em>silenciosas</em>, de las que no tiran un error.</p>
+
+  <div class="hallazgo">
+    <h4>gz-transport no mueve imágenes entre contenedores</h4>
+    <p>El puente hacia ROS se conectaba correctamente —<span class="marca">gz topic -i</span> mostraba publicador y suscriptor con el tipo correcto— y las imágenes no llegaban nunca. La odometría y la IMU, que son chicas, sí. La solución es que el puente comparta el espacio de red con Gazebo, y entonces sale a la red por DDS, que mueve los 921&nbsp;KB de un cuadro sin quejarse.</p>
+  </div>
+
+  <div class="hallazgo">
+    <h4>El kernel descartaba los cuadros, y lo decía en un contador que nadie mira</h4>
+    <p>Después, un nodo que degradaba la imagen y la republicaba tampoco funcionaba, esta vez entre dos procesos del <em>mismo</em> contenedor. El motivo estaba acá:</p>
+    <div class="consola">$ grep "^Udp:" /proc/net/snmp<br>Udp: 98469 4346 <b>1077</b> 58205 <b>1077</b> 0 0 0 0<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;InErrors&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RcvbufErrors</div>
+    <p>Mil setenta y siete datagramas descartados. El buffer de recepción máximo del kernel es de 208&nbsp;KB (<span class="marca">net.core.rmem_max</span>) y un cuadro de 640×480 en RGB son 921&nbsp;KB: se fragmenta, los fragmentos no entran y la muestra no se reensambla jamás. Se podría subir ese límite en el anfitrión, pero entonces el laboratorio dejaría de correr igual en otra máquina. La degradación del agua pasó a ser una biblioteca que se aplica donde se consume la imagen, y no viaja por la red.</p>
+  </div>
+
+  <div class="hallazgo">
+    <h4>Un tensor mal leído no falla: devuelve números</h4>
+    <p>El copiloto reportó «confianzas» de 640,88 y siguió funcionando una misión entera. No eran confianzas: eran coordenadas en píxeles. YOLO26 exporta a ONNX con forma <span class="marca">(1, 300, 6)</span> ya decodificado —<span class="marca">[x1, y1, x2, y2, confianza, clase]</span>— y no con el <span class="marca">(1, 4+C, N)</span> sin decodificar de YOLOv8, que es lo que uno espera si viene de esa familia. Un 640 donde se espera un valor entre 0 y 1 fue la única señal que hubo.</p>
+  </div>
+
+  <div class="hallazgo">
+    <h4>Cinco mil cuadros inservibles por no guardar un archivo de 300 KB</h4>
+    <p>El capturador escribía las poses sólo al terminar. Una corrida de 5104 cuadros se cerró con SIGTERM: las imágenes quedaron y el registro de poses nunca se escribió. Sin pose no hay proyección, y sin proyección no hay etiquetas. Ahora vuelca cada cuarenta cuadros y atiende la señal.</p>
+  </div>
+
+  <div class="hallazgo">
+    <h4>Reiniciar el simulador rompe el puente, en silencio</h4>
+    <p>El puente comparte el espacio de red con Gazebo, así que <span class="marca">restart rov-sim</span> lo deja hablando con una interfaz que ya no existe: los tópicos siguen listados y no llega un dato. Es exactamente la misma trampa que ya estaba documentada para PX4 en el informe anterior, y volvimos a caer en ella. Ahora el script de misión reinicia siempre los dos, en orden.</p>
+  </div>
+
+  <div class="hallazgo">
+    <h4>Un invariante que se apura miente igual que uno que falta</h4>
+    <p>El sembrado de la escena verifica contra la lista real de modelos de Gazebo, porque el servicio de creación devuelve éxito aunque no cree nada. Pero consultaba de inmediato: el servicio responde apenas encola la creación, y el modelo tarda en aparecer. Reportó «1 de 3 modelos» y abortó una misión con la escena entera bien sembrada. Un invariante sin reintentos es una carrera disfrazada de comprobación.</p>
+  </div>
+</section>
+
+<section>
+  <div class="etapa"><span class="num">Alcance</span><h2>Qué está simulado y qué no</h2></div>
+  <p>Esto es una maqueta, y conviene ser explícito sobre sus límites antes de que alguien los descubra por su cuenta.</p>
+  <p><strong>El posicionamiento es perfecto.</strong> El censo georreferenciado usa la pose que da el simulador. Abajo del agua no hay GPS: la posición se consigue por DVL —que integra velocidad contra el fondo y acumula deriva— o por posicionamiento acústico desde el barco. Gazebo Harmonic trae un sensor DVL que este informe no usa todavía, y esa es la primera cosa que habría que agregar para que el resultado signifique algo sobre un banco real.</p>
+  <p><strong>Los animales son elipsoides.</strong> Alcanzan para entrenar un modelo que después funcione sobre <em>esta</em> simulación, y no para uno que funcione sobre video real — que es exactamente lo que muestran los resultados de SAM 3, dos veces, con dos sujetos distintos.</p>
+  <p><strong>El cable no tiene dinámica.</strong> Es una catenaria en régimen: no oscila, no se sacude, no se engancha y se libera. Responde por dónde pasa, que es la pregunta operativa, y no cómo se mueve.</p>
+  <p>Nada de esto invalida el ejercicio. Lo que sí hace es marcar por dónde seguiría: DVL con deriva realista, video real de inmersiones para la parte de percepción, y —el paso natural— un brazo manipulador para tomar muestras, que además trae un problema lindo, porque cuando el brazo se mueve el vehículo reacciona: no está apoyado en el piso, flota.</p>
+</section>
+
+<footer>
+  <p>Todo el material de esta página se generó en simulación, en una computadora de escritorio con una GPU de 6&nbsp;GB. Los videos son capturas de ejecuciones reales; las imágenes salen de las cámaras simuladas del ROV; las cifras, de mediciones sobre esas ejecuciones. Nadie etiquetó una sola caja a mano.</p>
+  <p>Construido sobre ROS&nbsp;2 Jazzy Jalisco y Gazebo Harmonic, ambos con soporte hasta mayo de 2029. El vehículo es un BlueROV2 con los coeficientes hidrodinámicos publicados para ese casco.</p>
+</footer>
+
+</div>
+
+</body>
+</html>
